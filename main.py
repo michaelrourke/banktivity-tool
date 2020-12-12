@@ -1,6 +1,9 @@
 import sqlite3
 from datetime import datetime
 import csv
+import argparse
+import sys
+import os
 
 
 def get_maxZPK(table):
@@ -56,11 +59,20 @@ def insert_securityPrice(symbol, date, close, i):
 
     c.execute("INSERT INTO ZSECURITYPRICE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data)
 
-file_path = ""
-csv_path = ""
-delimiter = ";"
 
-db = sqlite3.connect(file_path + "/StoreContent/core.sql")
+parser = argparse.ArgumentParser(description = "Data importer for Banktivity")
+parser.add_argument('f', nargs='+', help="Banktivity file")
+parser.add_argument('c', nargs='+', help="csv file")
+parser.add_argument('-d', nargs='?', const=",", default=";", help="Use \",\" as delimiter of define another, default \";\"")
+args = parser.parse_args()
+
+PWD = os.getcwd()
+file_path = args.f[0]
+db_path = PWD + "/" + file_path + "StoreContent/core.sql"
+csv_path = args.c[0]
+delimiter = args.d
+
+db = sqlite3.connect(db_path)
 c = db.cursor()
 
 Z_PK = get_maxZPK("ZSECURITYPRICE")
