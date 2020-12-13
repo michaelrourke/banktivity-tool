@@ -66,10 +66,11 @@ parser.add_argument('c', nargs='+', help="csv file")
 parser.add_argument('-d', nargs='?', const=",", default=";", help="Use \",\" as delimiter of define another, default \";\"")
 args = parser.parse_args()
 
-PWD = os.getcwd()
+cwd = os.getcwd()
 file_path = args.f[0]
-db_path = PWD + "/" + file_path + "StoreContent/core.sql"
-csv_path = args.c[0]
+file_path = file_path if file_path.endswith("/") else file_path + "/"
+db_path = cwd + "/" + file_path + "StoreContent/core.sql"
+csv_path = cwd + "/" + args.c[0]
 delimiter = args.d
 
 db = sqlite3.connect(db_path)
