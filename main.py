@@ -63,7 +63,7 @@ def insert_securityPrice(symbol, date, close, i):
 parser = argparse.ArgumentParser(description = "Data importer for Banktivity")
 parser.add_argument('f', nargs='+', help="Banktivity file")
 parser.add_argument('c', nargs='+', help="csv file")
-parser.add_argument('-d', nargs='?', const=",", default=";", help="Use \",\" as delimiter of define another, default \";\"")
+parser.add_argument('-d', nargs='?', const=",", default=";", help="Use \",\" as delimiter or define another, default \";\"")
 args = parser.parse_args()
 
 cwd = os.getcwd()
