@@ -1,4 +1,4 @@
-# Banktivity-tool
+# mportbanktivityasx
 Command line tool to import security prices into Banktivity from a CSV file. 
 
 Applies every CSV file to every Banktivity database defined in the script.
@@ -15,7 +15,7 @@ Security Code, Date, Opening Price, High Sale Price, Low Sale Price, Closing Pri
 COH,07 Jan 2021,188.6,189.99,182.29,182.5
 ...
 ```
-Note this is the CSV format of daily price data from CommSec.
+Note this is the CSV format of daily ASX price data from CommSec.
 
 The constants `CSV_DELIMITER` and `CSV_DATEFORMAT` may be changed as required.
 
