@@ -1,4 +1,4 @@
-# mportbanktivityasx
+# importbanktivityasx
 Command line tool to import security prices into Banktivity from a CSV file. 
 
 Applies every CSV file to every Banktivity database defined in the script.
