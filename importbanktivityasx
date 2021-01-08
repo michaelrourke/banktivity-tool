@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""
+Load end of day asx price data (CSV format) into Banktivity DB
+
+Adapted from git/banktivity-tool
+
+Applies every ASX CSV file to all listed databases.
+Only securitites in the ASX CSV which are not excluded from quote updates are updated.
+Existing price data isn't replaced or added to.
+
+MWR, Jan 2021
+"""
+
+import argparse
+import os
+from datetime import datetime
+import sqlite3
+import csv
+import time
+
+BANKTIVITY_FILES_ROOT = '/Users/USERNAME/Documents'
+BANKTIVITY_FILES = ('MYAccounts.bank7',)
+BANKTIVITY_FILE_STORE = 'StoreContent/core.sql'
+
+EQUITY_SYMBOL_SUFFIX = ".AX"
+
+# CSV file is expected to have columns defined in the first row:
+#   Security Code, Date, Opening Price, High Sale Price, Low Sale Price, Closing Price
+CSV_DELIMITER = ","
+CSV_DATEFORMAT = "%d %b %Y"
+
+##########################################
+def checkargs():
+    parser = argparse.ArgumentParser(description = "Data importer for Banktivity")
+    parser.add_argument('csv_file', nargs='+', help="csv file")
+    return parser.parse_args()
+
+##########################################
+def getMaxPrimaryKey(table):
+    c.execute("SELECT MAX(Z_PK) FROM " + table)
+    return c.fetchone()[0]
+
+##########################################
+def getEntityId(item):
+    c.execute("""SELECT Z_ENT
+                 FROM Z_PRIMARYKEY
+                 WHERE Z_NAME = ?""", (item,))
+    return c.fetchone()[0]
+
+##########################################
+def getSecurityUniqueId(symbol):
+    c.execute("""SELECT ZPUNIQUEID
+                 FROM ZSECURITY
+                 WHERE ZPSYMBOL = ?
+                       AND ZPEXCLUDEFROMQUOTEUPDATES = 0""", (symbol,))
+    zpuniqueid = c.fetchone()
+    if zpuniqueid:
+        return zpuniqueid[0]
+    return zpuniqueid
+
+##########################################
+def updatePrimaryKey(key, i):
+    c.execute("""UPDATE Z_PRIMARYKEY
+                 SET Z_MAX = ?
+                 WHERE Z_ENT = ?""", (i, key))
+
+##########################################
+def insertSecurityPriceItem(zpuniqueid):
+    z_ent = getEntityId("SecurityPriceItem")
+    z_pk = getMaxPrimaryKey("ZSECURITYPRICEITEM") + 1
+
+    data = (z_pk, z_ent, 1, None, None, None, zpuniqueid)
+    c.execute("""INSERT INTO ZSECURITYPRICEITEM
+              (Z_PK, Z_ENT, Z_OPT, ZPKNOWNDATERANGEBEGIN, ZPKNOWNDATERANGEEND, ZPLATESTIMPORTDATE, ZPSECURITYID)
+              VALUES (?, ?, ?, ?, ?, ?, ?)""", data)
+    updatePrimaryKey(z_ent, z_pk)
+    return z_pk
+
+##########################################
+def getSecurityPrice(zpsecuritypriceitem, zpdate):
+    c.execute("""SELECT Z_PK
+                 FROM ZSECURITYPRICE
+                 WHERE ZPSECURITYPRICEITEM = ?
+                 AND ZPDATE = ?""", (zpsecuritypriceitem,zpdate))
+    z_pk = c.fetchone()
+    if z_pk:
+        return z_pk[0]
+    return z_pk
+
+##########################################
+def getSecurityPriceItem(zpsecurityid):
+    c.execute("""SELECT Z_PK
+                 FROM ZSECURITYPRICEITEM
+                 WHERE ZPSECURITYID = ?""", (zpsecurityid,))
+    z_pk = c.fetchone()
+    if z_pk:
+        return z_pk[0]
+    return z_pk
+
+##########################################
+def bumpSecurityPriceItem(zpuniqueid):
+    # increment ZSECURITYPRICEITEM entity change count
+    c.execute("""UPDATE ZSECURITYPRICEITEM
+                 SET Z_OPT = Z_OPT + 1
+                 WHERE ZPSECURITYID = ?""", (zpuniqueid,))
+
+##########################################
+def insertSecurityPrice(symbol, date, zpopenprice, zphighprice, zplowprice, zpcloseprice, primarykey):
+    symbol = symbol + EQUITY_SYMBOL_SUFFIX
+    zpuniqueid = getSecurityUniqueId(symbol)
+    if not zpuniqueid:
+        return 0
+
+    zpsecuritypriceitem = getSecurityPriceItem(zpuniqueid)
+    if zpsecuritypriceitem:
+        bumpSecurityPriceItem(zpuniqueid)
+    else:
+        # print("Adding SecurityPriceItem for", symbol)
+        zpsecuritypriceitem = insertSecurityPriceItem(zpuniqueid)
+
+    # Z_PK is the primary key (unique identifier) for the entity.
+    z_pk = primarykey
+
+    # Z_ENT is the entity ID (every entity of a particular type has the same entity ID).
+    z_ent = getEntityId("SecurityPrice")
+
+    # Z_OPT is the number of times an entity has been changed (initially 1).
+    z_opt = 1
+
+    zdatasource = 3
+    zpdate = (datetime.strptime(date, CSV_DATEFORMAT) - datetime(1970, 1, 1)).days
+    zpadjustedcloseprice = 0
+    zppreviouscloseprice = 0
+    zpvolume = 0
+
+    # don't add security price when it already exists
+    exists = getSecurityPrice(zpsecuritypriceitem, zpdate)
+    if exists:
+        return 0
+
+    print(date + ", " + symbol + ", " + zpcloseprice)
+    data = (z_pk, z_ent, z_opt, zdatasource, zpdate, zpsecuritypriceitem, zpadjustedcloseprice,
+            zpcloseprice, zphighprice, zplowprice, zpopenprice, zppreviouscloseprice, zpvolume)
+    c.execute("""INSERT INTO ZSECURITYPRICE
+              (Z_PK, Z_ENT, Z_OPT, ZPDATASOURCE, ZPDATE, ZPSECURITYPRICEITEM, ZPADJUSTEDCLOSEPRICE,
+              ZPCLOSEPRICE, ZPHIGHPRICE, ZPLOWPRICE, ZPOPENPRICE, ZPPREVIOUSCLOSEPRICE, ZPVOLUME)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", data)
+    return 1
+
+##########################################
+args = checkargs()
+
+if os.system("pgrep -q Banktivity") == 0:
+    os.system("""osascript -e 'tell application "Banktivity" to quit'""")
+    while os.system("pgrep -q Banktivity") == 0:
+        print("Waiting for Banktivity to quit...")
+        time.sleep(1)
+
+for bfile in BANKTIVITY_FILES:
+    OPENMODE = 'rw'
+    dbfile = f"file:{BANKTIVITY_FILES_ROOT}/{bfile}/{BANKTIVITY_FILE_STORE}?mode={OPENMODE}"
+    with sqlite3.connect(dbfile, uri=True) as bdb:
+        c = bdb.cursor()
+        print("Updating", bfile)
+
+        sp_pk = getMaxPrimaryKey("ZSECURITYPRICE")
+
+        for csv_path in args.csv_file:
+            with open(csv_path) as csv_in:
+                reader = csv.DictReader(csv_in, delimiter=CSV_DELIMITER)
+
+                for row in reader:
+                    # forget about volume, seems the numbers are not reliable and not displayed by Banktivity
+                    sp_pk += insertSecurityPrice(row['Security Code'], row['Date'], row['Opening Price'],
+                                                 row['High Sale Price'], row['Low Sale Price'], row['Closing Price'],
+                                                 sp_pk + 1)
+
+            sp_ent = getEntityId("SecurityPrice")
+            updatePrimaryKey(sp_ent, sp_pk)
+
+            bdb.commit()
