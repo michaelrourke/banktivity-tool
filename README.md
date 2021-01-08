@@ -1,5 +1,13 @@
 # Banktivity-tool
-Basic command line tool to import security prices into Banktivity from a csv file.
+Command line tool to import security prices into Banktivity from a CSV file. 
+
+Applies every CSV file to every Banktivity database defined in the script.
+
+Only securitites in the CSV which are already defined in Banktivity and not excluded from quote updates are updated.
+
+Existing price data isn't replaced or added to.
+
+Assumes Banktivity 7 schema.
 
 ### CSV format
 ```
